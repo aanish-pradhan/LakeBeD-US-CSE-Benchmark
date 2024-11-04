@@ -79,116 +79,191 @@ class LSTM(nn.Module):
 			decoder_input = decoder_output.detach()  # Detach to prevent backprop through the entire sequence
 
 		return outputs
+	
+	def __train__epoch__(self, train_loader, optimizer):
+		self.train()
 
-	def train_model(self, train_loader, validation_loader, num_epochs, learning_rate):
-		"""
-		Trains the LSTM model using a masked RMSE cost to handle missing targets.
+		total_train_cost = 0.0
+		total_train_batches = 0
+		predictions = []
 
-		Args:
-			train_loader (DataLoader): DataLoader for training data.
-			val_loader (DataLoader): DataLoader for validation data.
-			num_epochs (int): Number of training epochs.
+		for batch_idx, batch in enumerate(train_loader):
 
-		Returns:
-			None
-		"""
+			# Move each tensor in the batch to DEVICE
+			batch = [tensor.to(self.device) for tensor in batch]
+
+			# Extract out inputs and targets
+			input_batch, target_batch = batch
+
+			# Forward propagation
+			prediction = self.forward(input_batch)
+			predictions.append(prediction.detach().cpu().numpy())
+
+			# Check if all targets in samples of the batch are NaN and omit if so omit
+			reshaped_targets = target_batch.view(-1, target_batch.size(-1))
+			if torch.isnan(reshaped_targets).all():
+				continue
+
+			# Compute masked cost
+			cost = self.masked_rmse_cost(prediction, target_batch)
+			if torch.isnan(cost) or not cost.requires_grad:
+				continue
+
+			# Zero gradients in the optimizer
+			optimizer.zero_grad()
+
+			# Backpropagation
+			cost.backward()
+			torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm = 1.0)
+
+			# Update parameters
+			optimizer.step()
+
+			total_train_cost += cost.item()
+			total_train_batches += 1
+
+		average_train_cost = total_train_cost / total_train_batches if total_train_batches > 0 else float("inf")
 		
-		optimizer = optim.Adam(self.parameters(), lr = learning_rate, weight_decay = )
-		lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, threshold = 1e-2)
+		return average_train_cost, predictions
+	
+	def __validate_epoch__(self, validation_loader):
+		self.eval()
 
-		training_predictions = []
-		validation_predictions = []
-		average_training_costs = []
-		average_validation_costs = []
+		with torch.no_grad():
+			total_validation_cost = 0.0
+			total_validation_batches = 0
+			predictions = []
 
-		for epoch in tqdm(range(num_epochs)):
-			self.train()
-			total_train_cost = 0.0
-			total_train_batches = 0
-
-			for batch_idx, batch in enumerate(train_loader):	
+			for batch_idx, batch in enumerate(validation_loader):
 
 				# Move each tensor in the batch to DEVICE
 				batch = [tensor.to(self.device) for tensor in batch]
 
+				# Extract out inputs and targets
 				input_batch, target_batch = batch
 
 				# Forward propagation
-				outputs = self.forward(input_batch)
+				prediction = self.forward(input_batch)
+				predictions.append(prediction.detach().cpu().numpy())
 
-				if epoch == num_epochs - 1:
-					training_predictions.append(outputs.detach().cpu().numpy())
-
-				# Check if all targets in samples of the batch are NaN and omit if so
+				# Check if all targets in samples of the batch are NaN and omit if so omit
 				reshaped_targets = target_batch.view(-1, target_batch.size(-1))
 				if torch.isnan(reshaped_targets).all():
-					#print("Skipping batch with all NaN targets.")
 					continue
 
 				# Compute masked cost
-				cost = self.masked_rmse_cost(outputs, target_batch)
-				if torch.isnan(cost) or not cost.requires_grad:
-					#print("Skipping batch due to NaN loss.")
+				cost = self.masked_rmse_cost(prediction, target_batch)
+				if torch.isnan(cost):
 					continue
 
-				# Zero gradients in the optimizer
-				optimizer.zero_grad()
+				total_validation_cost += cost.item()
+				total_validation_batches += 1
 
-				# Backpropagation
-				cost.backward()
-				torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+			average_validation_cost = total_validation_cost / total_validation_batches if total_validation_batches > 0 else float("inf")
 
-				# Update parameters
-				optimizer.step()
+		return average_validation_cost, predictions
 
-				total_train_cost += cost.item()
-				total_train_batches += 1
+	def __test_model__(self, test_loader):
+		self.eval()
 
-			average_train_cost = total_train_cost / total_train_batches if total_train_batches > 0 else float('inf')
-			average_training_costs.append(average_train_cost)
+		with torch.no_grad():
+			total_testing_cost = 0.0
+			total_testing_batches = 0
+			predictions = []
+
+			for batch_idx, batch in enumerate(test_loader):
+
+				# Move each tensor in the batch to DEVICE
+				batch = [tensor.to(self.device) for tensor in batch]
+
+				# Extract out inputs and targets
+				input_batch, target_batch = batch
+
+				# Forward propagation
+				prediction = self.forward(input_batch)
+				predictions.append(prediction.detach().cpu().numpy())
+
+				# Check if all targets in samples of the batch are NaN and omit if so omit
+				reshaped_targets = target_batch.view(-1, target_batch.size(-1))
+				if torch.isnan(reshaped_targets).all():
+					continue
+
+				# Compute masked cost
+				cost = self.masked_rmse_cost(prediction, target_batch)
+				if torch.isnan(cost):
+					continue
+
+				total_testing_cost += cost.item()
+				total_testing_batches += 1
+
+			average_testing_cost = total_testing_cost / total_testing_batches if total_testing_batches > 0 else float("inf")
+
+		return average_testing_cost, predictions			
 			
-			# Validation phase
-			self.eval()
-			total_val_cost = 0.0
-			total_val_batches = 0
+	def train_model(self, 
+					training_loader, 
+					validation_loader, 
+					test_loader, 
+					num_epochs, 
+					learning_rate, 
+					lr_scheduler_threshold = 1e-4,
+					lr_scheduler_patience = 3, 
+					weight_decay = 0.0, 
+					early_stopping_patience = 5):
 
-			with torch.no_grad():
-				for batch_idx, batch in enumerate(validation_loader):
+		# Optimizer
+		optimizer = optim.Adam(self.parameters(), lr = learning_rate, weight_decay = weight_decay)
+		lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, threshold = lr_scheduler_threshold, patience = lr_scheduler_patience)
 
-					# Move each tensor in the batch to DEVICE
-					batch = [tensor.to(self.device) for tensor in batch]
+		# Model outputs
+		final_training_predictions = None
+		final_validation_predictions = None
+		final_testing_predictions = None
+		average_training_costs = []
+		average_validation_costs = []
+		average_testing_cost = None
+		lr_per_epoch = []
 
-					input_batch, target_batch = batch
+		# Early stoppping
+		best_validation_cost = float("inf")
+		epochs_without_improvement = 0
 
-					# Check if all targets in samples of the batch are NaN and omit if so
-					reshaped_targets = target_batch.view(-1, target_batch.size(-1))
-					if torch.isnan(reshaped_targets).all():
-						continue
+		for epoch in tqdm(range(num_epochs)):
 
-					# Forward propagation
-					outputs = self.forward(input_batch)
+			lr_per_epoch.append(optimizer.param_groups[0]["lr"])
 
-					if epoch == num_epochs - 1:
-						validation_predictions.append(outputs.detach().cpu().numpy())
+			# Training
+			average_training_cost, training_prediction = self.__train__epoch__(training_loader, optimizer)
+			average_training_costs.append(average_training_cost)
+			final_training_predictions = training_prediction
 
-					# Compute masked cost
-					cost = self.masked_rmse_cost(outputs, target_batch)
-					if torch.isnan(cost):
-						continue
-
-					total_val_cost += cost.item()
-					total_val_batches += 1
-
-			average_validation_cost = total_val_cost / total_val_batches if total_val_batches > 0 else float('inf')
+			# Validation
+			average_validation_cost, validation_prediction = self.__validate_epoch__(validation_loader)
 			average_validation_costs.append(average_validation_cost)
+			final_validation_predictions = validation_prediction
 
-			# Adjust the learning rate
+			# Adjust learning rate
 			lr_scheduler.step(average_validation_cost)
 
-			print(f"EPOCH {epoch + 1}")
-			print(f"Average Training Cost (RMSE): {average_train_cost:.4f}\tAverage Validation Cost (RMSE): {average_validation_cost:.4f}")
+			# Early stopping check
+			if average_validation_cost < best_validation_cost:
+				best_validation_cost = average_validation_cost
+				epochs_without_improvement = 0 # Reset counter
+			else:
+				epochs_without_improvement += 1
 
-		return training_predictions, validation_predictions, average_training_costs, average_validation_costs
+			if epochs_without_improvement >= early_stopping_patience:
+				print(f"Early stopping at epoch {epoch + 1} with best validation cost: {best_validation_cost:.4f}")
+				break
+
+			print(f"EPOCH {epoch + 1}")
+			print(f"Average Training Cost (RMSE): {average_training_cost:.4f}\tAverage Validation Cost (RMSE): {average_validation_cost:.4f}")
+
+		# Testing
+		average_testing_cost, final_testing_predictions = self.__test_model__(test_loader)
+		print(f"Average Testing Cost (RMSE): {average_testing_cost}")
+
+		return final_training_predictions, final_validation_predictions, final_testing_predictions, average_training_costs, average_validation_costs, average_testing_cost, lr_per_epoch
 
 	def masked_rmse_cost(self, outputs, targets):
 		mask = ~torch.isnan(targets)
