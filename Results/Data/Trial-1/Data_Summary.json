@@ -1,0 +1,37 @@
+{
+    "input_features": [
+        "[chla_rfu,",
+        "do,",
+        "par,",
+        "phyco,",
+        "temp]"
+    ],
+    "target_features": [
+        "[do,",
+        "temp]"
+    ],
+    "train_first_input_start_date": "2006-06-28",
+    "train_first_input_end_date": "2006-07-18",
+    "train_first_target_start_date": "2006-07-19",
+    "train_first_target_end_date": "2006-08-01",
+    "train_last_input_start_date": "2020-04-23",
+    "train_last_input_end_date": "2020-05-13",
+    "train_last_target_start_date": "2020-05-14",
+    "train_last_target_end_date": "2020-05-27",
+    "validation_first_input_start_date": "2020-05-28",
+    "validation_first_input_end_date": "2020-06-17",
+    "validation_first_target_start_date": "2020-06-18",
+    "validation_first_target_end_date": "2020-07-01",
+    "validation_last_input_start_date": "2022-01-18",
+    "validation_last_input_end_date": "2022-02-07",
+    "validation_last_target_start_date": "2022-02-08",
+    "validation_last_target_end_date": "2022-02-21",
+    "test_first_input_start_date": "2022-02-22",
+    "test_first_input_end_date": "2022-03-14",
+    "test_first_target_start_date": "2022-03-15",
+    "test_first_target_end_date": "2022-03-28",
+    "test_last_input_start_date": "2023-10-16",
+    "test_last_input_end_date": "2023-11-05",
+    "test_last_target_start_date": "2023-11-06",
+    "test_last_target_end_date": "2023-11-19"
+}

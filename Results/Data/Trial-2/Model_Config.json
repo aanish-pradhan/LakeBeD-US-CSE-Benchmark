@@ -1,0 +1,10 @@
+{
+    "seed": 2021,
+    "encoder_num_recurrent_layers": 1,
+    "decoder_num_recurrent_layers": 1,
+    "encoder_dropout_rate": 0.0,
+    "decoder_dropout_rate": 0.0,
+    "hidden_state_dimensionality": 8,
+    "num_epochs": 100,
+    "learning_rate": 0.0008799269593971269
+}
